@@ -376,6 +376,27 @@
   .stage-row .roman{ font-family: var(--serif); color: var(--gold); min-width: 34px; }
   .stage-row .sname{ flex:1; color: rgba(243,236,217,0.88); }
   .stage-row .scount{ color: rgba(243,236,217,0.5); font-size:.8rem; }
+  .stage-row.clickable{
+    cursor:pointer;
+    transition: background .2s ease, border-color .2s ease;
+    align-items:center;
+  }
+  .stage-row.clickable:hover{ background: rgba(184,134,58,0.08); }
+  .stage-row .stage-1hp{
+    background: rgba(164,63,63,0.16);
+    border: 1px solid rgba(164,63,63,0.65);
+    color: #e4a3a3;
+    font-family: var(--sans);
+    font-size: .76rem;
+    padding: 4px 10px;
+    border-radius: 3px;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .stage-row .stage-1hp:hover{
+    background: rgba(164,63,63,0.3);
+    border-color: #d46a6a;
+  }
 
   /* ---- Испытание: экран этапа ---- */
   .stage-screen{ text-align:center; padding: 28px 0 8px; animation: fadeIn .8s ease; }
@@ -1761,6 +1782,7 @@ const STAGE_DEFS = [
 
 function buildStages(){
   return STAGE_DEFS.map((d, i) => ({
+    num: i + 1,
     roman: ROMAN[i], name: d.name, sub: d.sub,
     items: BANK.filter(q => q.s === i + 1)
   })).filter(st => st.items.length > 0);
@@ -1775,21 +1797,58 @@ function getRecord(){
 function setRecord(v){
   try { localStorage.setItem('ent_hard_record', String(v)); } catch(e){}
 }
+function getStageRecord(stageNum){
+  try { return parseInt(localStorage.getItem('ent_hard_stage_' + stageNum) || '0', 10) || 0; } catch(e){ return 0; }
+}
+function setStageRecord(stageNum, v){
+  try { localStorage.setItem('ent_hard_stage_' + stageNum, String(v)); } catch(e){}
+}
 
 let game = null;
 let endAgainHandler = null;
 let endReviewHandler = null;
+
+function startSingleStageHard(stageIdx){
+  const all = buildStages();
+  const chosen = all[stageIdx];
+  if(!chosen) return;
+  startGame('hard', [{
+    num: chosen.num,
+    roman: chosen.roman,
+    name: chosen.name,
+    sub: chosen.sub,
+    items: chosen.items
+  }]);
+}
 
 function openModeSelect(){
   showScreen('modeSelect');
   const rec = getRecord();
   document.getElementById('hardRecord').textContent =
     rec ? 'Рекорд: ' + rec + ' верных ответов за один заход' : 'Рекорд пока не установлен';
-  document.getElementById('stageList').innerHTML = buildStages().map(st =>
-    '<div class="stage-row"><span class="roman">' + st.roman + '</span>' +
-    '<span class="sname">' + esc(st.name) + '</span>' +
-    '<span class="scount">' + st.items.length + ' вопр.</span></div>'
-  ).join('');
+  document.getElementById('stageList').innerHTML = buildStages().map((st, idx) => {
+    const sRec = getStageRecord(st.num);
+    return '<div class="stage-row clickable" data-stage="' + idx + '">' +
+      '<span class="roman">' + st.roman + '</span>' +
+      '<span class="sname">' + esc(st.name) +
+        (sRec ? ' <span class="scount">· рекорд 1♥: ' + sRec + '/' + st.items.length + '</span>' : '') +
+      '</span>' +
+      '<span class="scount">' + st.items.length + ' вопр.</span>' +
+      '<button type="button" class="stage-1hp" data-stage="' + idx + '">1 жизнь</button>' +
+    '</div>';
+  }).join('');
+
+  document.querySelectorAll('#stageList .stage-1hp').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      startSingleStageHard(parseInt(btn.dataset.stage, 10));
+    });
+  });
+  document.querySelectorAll('#stageList .stage-row.clickable').forEach(row => {
+    row.addEventListener('click', () => {
+      startSingleStageHard(parseInt(row.dataset.stage, 10));
+    });
+  });
 }
 
 function startGame(mode, customStages){
@@ -1797,7 +1856,8 @@ function startGame(mode, customStages){
     mode: mode,
     runId: Date.now() + Math.random(),
     stages: customStages || buildStages(),
-    review: !!customStages,
+    singleStage: !!(customStages && customStages.length === 1 && customStages[0].num),
+    review: !!(customStages && !customStages[0].num),
     stageIdx: 0, queue: [], qi: 0,
     stageCorrect: 0, totalCorrect: 0, totalAnswered: 0,
     results: [], mistakes: [], locked: false
@@ -1930,10 +1990,18 @@ function showEnd(cfg){
 
 function showDeath(item, chosenText){
   if(!game) return;
-  const prevRec = getRecord();
-  const newRec = game.totalCorrect > prevRec;
-  if(newRec) setRecord(game.totalCorrect);
   const st = game.stages[game.stageIdx];
+  const isSingle = game.singleStage;
+  const prevRec = isSingle ? getStageRecord(st.num) : getRecord();
+  const newRec = game.totalCorrect > prevRec;
+  if(newRec){
+    if(isSingle) setStageRecord(st.num, game.totalCorrect);
+    else setRecord(game.totalCorrect);
+  }
+  const singleCopy = isSingle ? [{
+    num: st.num, roman: st.roman, name: st.name, sub: st.sub, items: st.items
+  }] : null;
+
   showEnd({
     death: true,
     title: 'Вы погибли',
@@ -1948,9 +2016,11 @@ function showDeath(item, chosenText){
         '<div class="ans">Ваш ответ: <b class="bad">' + esc(chosenText) + '</b></div>' +
         '<div class="ans">Правильно: <b>' + esc(item.options[item.a]) + '</b></div>' +
       '</div>' +
-      '<p class="end-note">Новая попытка начнётся с первого этапа. Порядок вопросов изменится.</p>',
+      '<p class="end-note">' + (isSingle
+        ? 'Новая попытка перезапустит этап ' + st.roman + '. Порядок вопросов изменится.'
+        : 'Новая попытка начнётся с первого этапа. Порядок вопросов изменится.') + '</p>',
     againLabel: 'Начать заново',
-    againFn: () => startGame('hard')
+    againFn: () => isSingle ? startGame('hard', singleCopy) : startGame('hard')
   });
 }
 
@@ -1964,14 +2034,25 @@ function finishGame(){
   }).join('');
 
   if(game.mode === 'hard'){
-    const prevRec = getRecord();
-    if(game.totalCorrect > prevRec) setRecord(game.totalCorrect);
+    const isSingle = game.singleStage;
+    const st = game.stages[0];
+    const prevRec = isSingle ? getStageRecord(st.num) : getRecord();
+    if(game.totalCorrect > prevRec){
+      if(isSingle) setStageRecord(st.num, game.totalCorrect);
+      else setRecord(game.totalCorrect);
+    }
+    const singleCopy = isSingle ? [{
+      num: st.num, roman: st.roman, name: st.name, sub: st.sub, items: st.items
+    }] : null;
+
     showEnd({
-      title: 'Испытание пройдено',
-      sub: 'Ни одной ошибки. Одна жизнь — и вы дошли до конца.',
+      title: isSingle ? 'Этап ' + st.roman + ' пройден' : 'Испытание пройдено',
+      sub: isSingle
+        ? 'Ни одной ошибки на этапе «' + st.name + '» с одной жизнью.'
+        : 'Ни одной ошибки. Одна жизнь — и вы дошли до конца.',
       body: '<div class="end-stats"><div><b>' + game.totalCorrect + ' / ' + total + '</b><span>верных ответов</span></div></div>' + rows,
       againLabel: 'Пройти заново',
-      againFn: () => startGame('hard')
+      againFn: () => isSingle ? startGame('hard', singleCopy) : startGame('hard')
     });
     return;
   }
