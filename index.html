@@ -376,27 +376,6 @@
   .stage-row .roman{ font-family: var(--serif); color: var(--gold); min-width: 34px; }
   .stage-row .sname{ flex:1; color: rgba(243,236,217,0.88); }
   .stage-row .scount{ color: rgba(243,236,217,0.5); font-size:.8rem; }
-  .stage-row.clickable{
-    cursor:pointer;
-    transition: background .2s ease, border-color .2s ease;
-    align-items:center;
-  }
-  .stage-row.clickable:hover{ background: rgba(184,134,58,0.08); }
-  .stage-row .stage-1hp{
-    background: rgba(164,63,63,0.16);
-    border: 1px solid rgba(164,63,63,0.65);
-    color: #e4a3a3;
-    font-family: var(--sans);
-    font-size: .76rem;
-    padding: 4px 10px;
-    border-radius: 3px;
-    cursor:pointer;
-    white-space:nowrap;
-  }
-  .stage-row .stage-1hp:hover{
-    background: rgba(164,63,63,0.3);
-    border-color: #d46a6a;
-  }
 
   /* ---- Испытание: экран этапа ---- */
   .stage-screen{ text-align:center; padding: 28px 0 8px; animation: fadeIn .8s ease; }
@@ -476,6 +455,30 @@
   .end-q .ans b.bad{ color:#f0b3b3; }
   .end-note{ text-align:center; font-size:.84rem; color: rgba(243,236,217,0.5); }
   .card.death{ border-color: rgba(184,58,58,0.55); }
+  /* ---- Испытание: выбор отдельных этапов ---- */
+  .stage-pick{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding: 10px 0;
+    border-top: 1px solid rgba(243,236,217,0.08);
+  }
+  .stage-pick .roman{ font-family: var(--serif); color: var(--gold); min-width: 34px; }
+  .stage-pick .info{ flex:1; min-width: 180px; }
+  .stage-pick .sname{ font-size:.92rem; color: rgba(243,236,217,0.9); }
+  .stage-pick .smeta{ font-size:.76rem; color: rgba(243,236,217,0.5); margin-top:2px; }
+  .stage-pick .smeta .done{ color:#9fcf9a; }
+  button.mini{
+    background:transparent;
+    border:1px solid rgba(243,236,217,0.35);
+    color: var(--parchment);
+    font-family: var(--sans);
+    font-size:.8rem;
+    padding: 6px 14px;
+    border-radius: 3px;
+    cursor:pointer;
+  }
+  button.mini:hover{ border-color: var(--gold); color: var(--gold); }
+  button.mini.hard{ border-color: rgba(164,63,63,0.6); color:#e4a3a3; }
+  button.mini.hard:hover{ border-color:#d46a6a; color:#f0b3b3; }
   @keyframes fadeIn{ from{opacity:0;} to{opacity:1;} }
 </style>
 </head>
@@ -549,7 +552,8 @@
         <h2>Испытание</h2>
         <button class="ghost" id="modeBackBtn">← Назад</button>
       </div>
-      <p class="mode-intro">Весь банк вопросов, разделённый на 10 этапов по эпохам. Внутри каждого этапа порядок вопросов и вариантов ответа каждый раз новый — так факты запоминаются, а не заучиваются по позиции.</p>
+      <p class="mode-intro">Можно пройти весь путь сразу или тренировать этапы по отдельности — у каждого этапа свои лёгкий и сложный режимы. Порядок вопросов и вариантов ответа каждый раз новый.</p>
+      <div class="era-label">Весь путь — все вопросы подряд</div>
       <div class="mode-grid">
         <button class="mode-card" id="easyModeBtn">
           <h3>Лёгкий</h3>
@@ -557,10 +561,11 @@
         </button>
         <button class="mode-card hard" id="hardModeBtn">
           <h3>Сложный</h3>
-          <p>Одна жизнь на всё Испытание. Одна ошибка — и вы начинаете заново с первого этапа, а вопросы перемешиваются.</p>
+          <p>Одна жизнь на весь путь. Одна ошибка — и вы начинаете заново с первого этапа, а вопросы перемешиваются. Самый тяжёлый режим.</p>
           <span class="record" id="hardRecord"></span>
         </button>
       </div>
+      <div class="era-label">Отдельные этапы</div>
       <div id="stageList"></div>
     </section>
 
@@ -1782,8 +1787,7 @@ const STAGE_DEFS = [
 
 function buildStages(){
   return STAGE_DEFS.map((d, i) => ({
-    num: i + 1,
-    roman: ROMAN[i], name: d.name, sub: d.sub,
+    n: i + 1, roman: ROMAN[i], name: d.name, sub: d.sub,
     items: BANK.filter(q => q.s === i + 1)
   })).filter(st => st.items.length > 0);
 }
@@ -1794,70 +1798,54 @@ function esc(s){
 function getRecord(){
   try { return parseInt(localStorage.getItem('ent_hard_record') || '0', 10) || 0; } catch(e){ return 0; }
 }
+function getStageBest(n){
+  try { const o = JSON.parse(localStorage.getItem('ent_stage_best') || '{}'); return o[n] || 0; } catch(e){ return 0; }
+}
+function setStageBest(n, v){
+  try {
+    const o = JSON.parse(localStorage.getItem('ent_stage_best') || '{}');
+    o[n] = v;
+    localStorage.setItem('ent_stage_best', JSON.stringify(o));
+  } catch(e){}
+}
 function setRecord(v){
   try { localStorage.setItem('ent_hard_record', String(v)); } catch(e){}
-}
-function getStageRecord(stageNum){
-  try { return parseInt(localStorage.getItem('ent_hard_stage_' + stageNum) || '0', 10) || 0; } catch(e){ return 0; }
-}
-function setStageRecord(stageNum, v){
-  try { localStorage.setItem('ent_hard_stage_' + stageNum, String(v)); } catch(e){}
 }
 
 let game = null;
 let endAgainHandler = null;
 let endReviewHandler = null;
 
-function startSingleStageHard(stageIdx){
-  const all = buildStages();
-  const chosen = all[stageIdx];
-  if(!chosen) return;
-  startGame('hard', [{
-    num: chosen.num,
-    roman: chosen.roman,
-    name: chosen.name,
-    sub: chosen.sub,
-    items: chosen.items
-  }]);
-}
-
 function openModeSelect(){
   showScreen('modeSelect');
   const rec = getRecord();
   document.getElementById('hardRecord').textContent =
     rec ? 'Рекорд: ' + rec + ' верных ответов за один заход' : 'Рекорд пока не установлен';
-  document.getElementById('stageList').innerHTML = buildStages().map((st, idx) => {
-    const sRec = getStageRecord(st.num);
-    return '<div class="stage-row clickable" data-stage="' + idx + '">' +
+  const list = document.getElementById('stageList');
+  list.innerHTML = '';
+  buildStages().forEach(st => {
+    const best = getStageBest(st.n);
+    let meta = st.items.length + ' вопр.';
+    if(best >= st.items.length) meta += ' · <span class="done">сложный пройден ✓</span>';
+    else if(best) meta += ' · лучший результат в сложном: ' + best + ' подряд';
+    const row = document.createElement('div');
+    row.className = 'stage-pick';
+    row.innerHTML =
       '<span class="roman">' + st.roman + '</span>' +
-      '<span class="sname">' + esc(st.name) +
-        (sRec ? ' <span class="scount">· рекорд 1♥: ' + sRec + '/' + st.items.length + '</span>' : '') +
-      '</span>' +
-      '<span class="scount">' + st.items.length + ' вопр.</span>' +
-      '<button type="button" class="stage-1hp" data-stage="' + idx + '">1 жизнь</button>' +
-    '</div>';
-  }).join('');
-
-  document.querySelectorAll('#stageList .stage-1hp').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      startSingleStageHard(parseInt(btn.dataset.stage, 10));
-    });
-  });
-  document.querySelectorAll('#stageList .stage-row.clickable').forEach(row => {
-    row.addEventListener('click', () => {
-      startSingleStageHard(parseInt(row.dataset.stage, 10));
-    });
+      '<div class="info"><div class="sname">' + esc(st.name) + '</div><div class="smeta">' + meta + '</div></div>' +
+      '<button class="mini easy">Лёгкий</button><button class="mini hard">Сложный</button>';
+    row.querySelector('.easy').addEventListener('click', () => startGame('easy', [st], 'stage'));
+    row.querySelector('.hard').addEventListener('click', () => startGame('hard', [st], 'stage'));
+    list.appendChild(row);
   });
 }
 
-function startGame(mode, customStages){
+function startGame(mode, customStages, kind){
   game = {
     mode: mode,
+    kind: kind || 'full',
     runId: Date.now() + Math.random(),
     stages: customStages || buildStages(),
-    singleStage: !!(customStages && customStages.length === 1 && customStages[0].num),
-    review: !!(customStages && !customStages[0].num),
     stageIdx: 0, queue: [], qi: 0,
     stageCorrect: 0, totalCorrect: 0, totalAnswered: 0,
     results: [], mistakes: [], locked: false
@@ -1990,18 +1978,17 @@ function showEnd(cfg){
 
 function showDeath(item, chosenText){
   if(!game) return;
-  const st = game.stages[game.stageIdx];
-  const isSingle = game.singleStage;
-  const prevRec = isSingle ? getStageRecord(st.num) : getRecord();
-  const newRec = game.totalCorrect > prevRec;
-  if(newRec){
-    if(isSingle) setStageRecord(st.num, game.totalCorrect);
-    else setRecord(game.totalCorrect);
+  const kind = game.kind, stages = game.stages;
+  const st = stages[game.stageIdx];
+  let prevRec;
+  if(kind === 'stage'){
+    prevRec = getStageBest(st.n);
+    if(game.totalCorrect > prevRec) setStageBest(st.n, game.totalCorrect);
+  } else {
+    prevRec = getRecord();
+    if(game.totalCorrect > prevRec) setRecord(game.totalCorrect);
   }
-  const singleCopy = isSingle ? [{
-    num: st.num, roman: st.roman, name: st.name, sub: st.sub, items: st.items
-  }] : null;
-
+  const newRec = game.totalCorrect > prevRec;
   showEnd({
     death: true,
     title: 'Вы погибли',
@@ -2009,50 +1996,44 @@ function showDeath(item, chosenText){
     body:
       '<div class="end-stats">' +
         '<div><b>' + game.totalCorrect + '</b><span>верных ответов подряд</span></div>' +
-        '<div><b>' + Math.max(prevRec, game.totalCorrect) + '</b><span>' + (newRec ? 'новый рекорд' : 'рекорд') + '</span></div>' +
+        '<div><b>' + Math.max(prevRec, game.totalCorrect) + '</b><span>' + (newRec ? 'новый рекорд' : (kind === 'stage' ? 'рекорд этапа' : 'рекорд')) + '</span></div>' +
       '</div>' +
       '<div class="end-q">' +
         '<div class="q">' + esc(item.q) + '</div>' +
         '<div class="ans">Ваш ответ: <b class="bad">' + esc(chosenText) + '</b></div>' +
         '<div class="ans">Правильно: <b>' + esc(item.options[item.a]) + '</b></div>' +
       '</div>' +
-      '<p class="end-note">' + (isSingle
-        ? 'Новая попытка перезапустит этап ' + st.roman + '. Порядок вопросов изменится.'
-        : 'Новая попытка начнётся с первого этапа. Порядок вопросов изменится.') + '</p>',
+      '<p class="end-note">' + (kind === 'stage' ? 'Новая попытка начнётся с начала этого этапа.' : 'Новая попытка начнётся с первого этапа.') + ' Порядок вопросов изменится.</p>',
     againLabel: 'Начать заново',
-    againFn: () => isSingle ? startGame('hard', singleCopy) : startGame('hard')
+    againFn: () => startGame('hard', kind === 'full' ? null : stages, kind)
   });
 }
 
 function finishGame(){
+  const kind = game.kind, stages = game.stages, mode = game.mode;
   const total = game.results.reduce((a, r) => a + r.total, 0);
   const rows = game.results.map(r => {
-    const st = game.stages[r.stage];
+    const st = stages[r.stage];
     return '<div class="stage-row"><span class="roman">' + (st.roman || '✦') + '</span>' +
            '<span class="sname">' + esc(st.name) + '</span>' +
            '<span class="scount">' + r.correct + ' / ' + r.total + '</span></div>';
   }).join('');
+  const again = () => startGame(mode, kind === 'full' ? null : stages, kind);
 
-  if(game.mode === 'hard'){
-    const isSingle = game.singleStage;
-    const st = game.stages[0];
-    const prevRec = isSingle ? getStageRecord(st.num) : getRecord();
-    if(game.totalCorrect > prevRec){
-      if(isSingle) setStageRecord(st.num, game.totalCorrect);
-      else setRecord(game.totalCorrect);
+  if(mode === 'hard'){
+    if(kind === 'stage'){
+      const st = stages[0];
+      if(game.totalCorrect > getStageBest(st.n)) setStageBest(st.n, game.totalCorrect);
+    } else if(game.totalCorrect > getRecord()){
+      setRecord(game.totalCorrect);
     }
-    const singleCopy = isSingle ? [{
-      num: st.num, roman: st.roman, name: st.name, sub: st.sub, items: st.items
-    }] : null;
-
     showEnd({
-      title: isSingle ? 'Этап ' + st.roman + ' пройден' : 'Испытание пройдено',
-      sub: isSingle
-        ? 'Ни одной ошибки на этапе «' + st.name + '» с одной жизнью.'
-        : 'Ни одной ошибки. Одна жизнь — и вы дошли до конца.',
+      title: kind === 'stage' ? 'Этап пройден' : 'Испытание пройдено',
+      sub: kind === 'stage' ? 'Ни одной ошибки на этом этапе. Одна жизнь — и вы дошли до конца.'
+                            : 'Ни одной ошибки. Одна жизнь — и вы дошли до конца.',
       body: '<div class="end-stats"><div><b>' + game.totalCorrect + ' / ' + total + '</b><span>верных ответов</span></div></div>' + rows,
       againLabel: 'Пройти заново',
-      againFn: () => isSingle ? startGame('hard', singleCopy) : startGame('hard')
+      againFn: again
     });
     return;
   }
@@ -2065,16 +2046,17 @@ function finishGame(){
       '<div class="ans">Ваш ответ: <b>' + esc(m.chosen) + '</b> &nbsp;·&nbsp; Правильно: <b>' + esc(m.item.options[m.item.a]) + '</b></div></div>'
     ).join('')
   ) : '';
+  const titles = {review: 'Ошибки повторены', stage: 'Этап пройден', full: 'Испытание завершено'};
   showEnd({
-    title: game.review ? 'Ошибки повторены' : 'Испытание завершено',
+    title: titles[kind] || 'Испытание завершено',
     sub: 'Верных ответов: ' + game.totalCorrect + ' из ' + total + ' (' + pct + '%)',
     body: rows + mistakeHtml,
-    againLabel: 'Пройти заново',
-    againFn: () => startGame('easy'),
+    againLabel: kind === 'review' ? 'Повторить эти вопросы' : 'Пройти заново',
+    againFn: again,
     reviewFn: mistakes.length ? () => startGame('easy', [{
       roman: '', name: 'Работа над ошибками', sub: 'Вопросы, в которых вы ошиблись',
       items: mistakes.map(m => m.item)
-    }]) : null
+    }], 'review') : null
   });
 }
 
